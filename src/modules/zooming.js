@@ -1,8 +1,15 @@
-import { cursor, loadImage, transEndEvent, getOriginalSource } from '../utils'
+import {
+  cursor,
+  loadImage,
+  copy,
+  transEndEvent,
+  getOriginalSource
+} from '../utils'
 import DEFAULT_OPTIONS from '../options'
 
 import EventHandler from './event-handler'
 import Overlay from './overlay'
+import Wrapper from './wrapper'
 import Target from './target'
 
 /**
@@ -14,6 +21,9 @@ export default class Zooming {
    */
   constructor(options) {
     // elements
+    this.parent = null
+    this.placeholder = null
+    this.wrapper = Object.create(Wrapper)
     this.target = Object.create(Target)
     this.overlay = Object.create(Overlay)
     this.eventHandler = Object.create(EventHandler)
@@ -28,7 +38,6 @@ export default class Zooming {
 
     // init
     this.options = Object.assign({}, DEFAULT_OPTIONS, options)
-    this.overlay.init(this)
     this.eventHandler.init(this)
     this.listen(this.options.defaultZoomable)
   }
@@ -94,7 +103,9 @@ export default class Zooming {
     // onBeforeOpen event
     if (this.options.onBeforeOpen) this.options.onBeforeOpen(target)
 
-    this.target.init(target, this)
+    this.parent = target.parentNode.tagName === 'A'
+      ? target.parentNode.parentNode
+      : target.parentNode
 
     if (!this.options.preloadImage) {
       loadImage(this.target.srcOriginal)
@@ -103,9 +114,15 @@ export default class Zooming {
     this.shown = true
     this.lock = true
 
-    this.target.zoomIn()
+    this.placeholder = copy(target)
+    this.target.init(target, this)
+    this.overlay.init(this)
+
+    this.parent.insertBefore(this.placeholder, target)
+    this.wrapper.init(this)
     this.overlay.create()
     this.overlay.show()
+    this.target.zoomIn()
 
     document.addEventListener('scroll', this.eventHandler.scroll)
     document.addEventListener('keydown', this.eventHandler.keydown)
@@ -166,6 +183,9 @@ export default class Zooming {
       }
 
       this.target.restoreCloseStyle()
+      this.parent.insertBefore(target, this.placeholder)
+      this.parent.removeChild(this.placeholder)
+      this.wrapper.destroy()
       this.overlay.destroy()
 
       if (cb) cb(target)

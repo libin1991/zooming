@@ -45,6 +45,42 @@ export function setStyle(el, styles, remember) {
   return original
 }
 
+const stylesToCopy = [
+  'position',
+  'display',
+  'float',
+  'top',
+  'left',
+  'right',
+  'bottom',
+  'marginBottom',
+  'marginLeft',
+  'marginRight',
+  'marginTop',
+  'verticalAlign'
+]
+
+export function copy(el) {
+  const box = el.getBoundingClientRect()
+  const styles = getComputedStyle(el)
+  const ph = document.createElement('div')
+  let i = stylesToCopy.length, key
+
+  while (i--) {
+    key = stylesToCopy[i]
+    ph.style[key] = styles[key]
+  }
+
+  setStyle(ph, {
+    visibility: 'hidden',
+    width: box.width + 'px',
+    height: box.height + 'px',
+    display: styles.display === 'inline' ? 'inline-block' : styles.display
+  })
+
+  return ph
+}
+
 export function bindAll(_this, that) {
   const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(_this))
 

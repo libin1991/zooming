@@ -49,6 +49,30 @@ function setStyle(el, styles, remember) {
   return original;
 }
 
+var stylesToCopy = ['position', 'display', 'float', 'top', 'left', 'right', 'bottom', 'marginBottom', 'marginLeft', 'marginRight', 'marginTop', 'verticalAlign'];
+
+function copy(el) {
+  var box = el.getBoundingClientRect();
+  var styles = getComputedStyle(el);
+  var ph = document.createElement('div');
+  var i = stylesToCopy.length,
+      key = void 0;
+
+  while (i--) {
+    key = stylesToCopy[i];
+    ph.style[key] = styles[key];
+  }
+
+  setStyle(ph, {
+    visibility: 'hidden',
+    width: box.width + 'px',
+    height: box.height + 'px',
+    display: styles.display === 'inline' ? 'inline-block' : styles.display
+  });
+
+  return ph;
+}
+
 function bindAll(_this, that) {
   var methods = Object.getOwnPropertyNames(Object.getPrototypeOf(_this));
 
@@ -433,7 +457,6 @@ var Overlay = {
       return _this.instance.close();
     });
     this.instance = instance;
-    this.parent = document.body;
 
     setStyle(this.el, {
       position: 'fixed',
@@ -454,10 +477,10 @@ var Overlay = {
     });
   },
   create: function create() {
-    this.parent.appendChild(this.el);
+    this.instance.parent.appendChild(this.el);
   },
   destroy: function destroy() {
-    this.parent.removeChild(this.el);
+    this.instance.parent.removeChild(this.el);
   },
   show: function show() {
     var _this2 = this;
@@ -471,45 +494,78 @@ var Overlay = {
   }
 };
 
+var Wrapper = {
+  init: function init(instance) {
+    this.el = document.createElement('div');
+    this.instance = instance;
+    this.instance.parent.appendChild(this.el);
+    this.el.appendChild(this.instance.target.el);
+
+    setStyle(this.el, {
+      position: 'fixed',
+      zIndex: instance.options.zIndex + 1,
+      top: '50%',
+      left: '50%',
+      width: 0,
+      height: 0
+    });
+  },
+  destroy: function destroy() {
+    this.instance.parent.appendChild(this.instance.target.el);
+    this.instance.parent.removeChild(this.el);
+  }
+};
+
 var Target = {
   init: function init(el, instance) {
     this.el = el;
     this.instance = instance;
+    this.wrapper = document.createElement('div');
     this.srcThumbnail = this.el.getAttribute('src');
     this.srcOriginal = getOriginalSource(this.el);
     this.rect = el.getBoundingClientRect();
-    this.translate = null;
-    this.scale = null;
-    this.styleOpen = null;
-    this.styleClose = null;
+    this.translate = calculateTranslate(this.rect);
+    this.styleClose = setStyle(this.el, {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: '',
+      bottom: '',
+      whiteSpace: 'nowrap',
+      marginTop: -this.rect.height / 2 + 'px',
+      marginLeft: -this.rect.width / 2 + 'px',
+      cursor: instance.options.enableGrab ? cursor.grab : cursor.zoomOut,
+      transform: 'translate(' + this.translate.x + 'px, ' + this.translate.y + 'px)',
+      transition: '',
+      width: this.rect.width + 'px',
+      height: this.rect.height + 'px'
+    }, true);
   },
   zoomIn: function zoomIn() {
     var options = this.instance.options;
 
-    this.translate = calculateTranslate(this.rect);
     this.scale = calculateScale(this.rect, options.scaleBase, options.customSize);
 
     // force layout update
     this.el.offsetWidth;
 
     this.styleOpen = {
-      position: 'relative',
-      zIndex: options.zIndex + 1,
-      cursor: options.enableGrab ? cursor.grab : cursor.zoomOut,
       transition: transformCssProp + '\n        ' + options.transitionDuration + 's\n        ' + options.transitionTimingFunction,
-      transform: 'translate(' + this.translate.x + 'px, ' + this.translate.y + 'px)\n        scale(' + this.scale.x + ',' + this.scale.y + ')',
-      width: this.rect.width + 'px',
-      height: this.rect.height + 'px'
+      transform: 'scale(' + this.scale.x + ',' + this.scale.y + ')'
     };
 
     // trigger transition
-    this.styleClose = setStyle(this.el, this.styleOpen, true);
+    setStyle(this.el, this.styleOpen);
   },
   zoomOut: function zoomOut() {
     // force layout update
     this.el.offsetWidth;
+    var rect = this.instance.placeholder.getBoundingClientRect();
+    var translate = calculateTranslate(rect);
 
-    setStyle(this.el, { transform: 'none' });
+    setStyle(this.el, {
+      transform: 'translate(' + translate.x + 'px, ' + translate.y + 'px)'
+    });
   },
   grab: function grab(x, y, scaleExtra) {
     var windowCenter = getWindowCenter();
@@ -567,16 +623,9 @@ var Target = {
 };
 
 function calculateTranslate(rect) {
-  var windowCenter = getWindowCenter();
-  var targetCenter = {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2
-  };
-
-  // The vector to translate image to the window center
   return {
-    x: windowCenter.x - targetCenter.x,
-    y: windowCenter.y - targetCenter.y
+    x: rect.left - (window.innerWidth - rect.width) / 2,
+    y: rect.top - (window.innerHeight - rect.height) / 2
   };
 }
 
@@ -665,10 +714,6 @@ var _extends = Object.assign || function (target) {
   return target;
 };
 
-/**
- * Zooming instance.
- */
-
 var Zooming$1 = function () {
   /**
    * @param {Object} [options] Update default options if provided.
@@ -677,6 +722,9 @@ var Zooming$1 = function () {
     classCallCheck(this, Zooming);
 
     // elements
+    this.parent = null;
+    this.placeholder = null;
+    this.wrapper = Object.create(Wrapper);
     this.target = Object.create(Target);
     this.overlay = Object.create(Overlay);
     this.eventHandler = Object.create(EventHandler);
@@ -691,7 +739,6 @@ var Zooming$1 = function () {
 
     // init
     this.options = _extends({}, OPTIONS, options);
-    this.overlay.init(this);
     this.eventHandler.init(this);
     this.listen(this.options.defaultZoomable);
   }
@@ -771,7 +818,7 @@ var Zooming$1 = function () {
       // onBeforeOpen event
       if (this.options.onBeforeOpen) this.options.onBeforeOpen(target);
 
-      this.target.init(target, this);
+      this.parent = target.parentNode.tagName === 'A' ? target.parentNode.parentNode : target.parentNode;
 
       if (!this.options.preloadImage) {
         loadImage(this.target.srcOriginal);
@@ -780,9 +827,15 @@ var Zooming$1 = function () {
       this.shown = true;
       this.lock = true;
 
-      this.target.zoomIn();
+      this.placeholder = copy(target);
+      this.target.init(target, this);
+      this.overlay.init(this);
+
+      this.parent.insertBefore(this.placeholder, target);
+      this.wrapper.init(this);
       this.overlay.create();
       this.overlay.show();
+      this.target.zoomIn();
 
       document.addEventListener('scroll', this.eventHandler.scroll);
       document.addEventListener('keydown', this.eventHandler.keydown);
@@ -850,6 +903,9 @@ var Zooming$1 = function () {
         }
 
         _this2.target.restoreCloseStyle();
+        _this2.parent.insertBefore(target, _this2.placeholder);
+        _this2.parent.removeChild(_this2.placeholder);
+        _this2.wrapper.destroy();
         _this2.overlay.destroy();
 
         if (cb) cb(target);

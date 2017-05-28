@@ -5,7 +5,6 @@ export default {
     this.el = document.createElement('div')
     this.el.addEventListener('click', () => this.instance.close())
     this.instance = instance
-    this.parent = document.body
 
     setStyle(this.el, {
       position: 'fixed',
@@ -30,11 +29,11 @@ export default {
   },
 
   create() {
-    this.parent.appendChild(this.el)
+    this.instance.parent.appendChild(this.el)
   },
 
   destroy() {
-    this.parent.removeChild(this.el)
+    this.instance.parent.removeChild(this.el)
   },
 
   show() {

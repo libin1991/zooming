@@ -4,19 +4,35 @@ export default {
   init(el, instance) {
     this.el = el
     this.instance = instance
+    this.wrapper = document.createElement('div')
     this.srcThumbnail = this.el.getAttribute('src')
     this.srcOriginal = getOriginalSource(this.el)
     this.rect = el.getBoundingClientRect()
-    this.translate = null
-    this.scale = null
-    this.styleOpen = null
-    this.styleClose = null
+    this.translate = calculateTranslate(this.rect)
+    this.styleClose = setStyle(
+      this.el,
+      {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: '',
+        bottom: '',
+        whiteSpace: 'nowrap',
+        marginTop: -this.rect.height / 2 + 'px',
+        marginLeft: -this.rect.width / 2 + 'px',
+        cursor: instance.options.enableGrab ? cursor.grab : cursor.zoomOut,
+        transform: `translate(${this.translate.x}px, ${this.translate.y}px)`,
+        transition: '',
+        width: `${this.rect.width}px`,
+        height: `${this.rect.height}px`
+      },
+      true
+    )
   },
 
   zoomIn() {
     const options = this.instance.options
 
-    this.translate = calculateTranslate(this.rect)
     this.scale = calculateScale(
       this.rect,
       options.scaleBase,
@@ -27,27 +43,25 @@ export default {
     this.el.offsetWidth
 
     this.styleOpen = {
-      position: 'relative',
-      zIndex: options.zIndex + 1,
-      cursor: options.enableGrab ? cursor.grab : cursor.zoomOut,
       transition: `${transformCssProp}
         ${options.transitionDuration}s
         ${options.transitionTimingFunction}`,
-      transform: `translate(${this.translate.x}px, ${this.translate.y}px)
-        scale(${this.scale.x},${this.scale.y})`,
-      width: `${this.rect.width}px`,
-      height: `${this.rect.height}px`
+      transform: `scale(${this.scale.x},${this.scale.y})`
     }
 
     // trigger transition
-    this.styleClose = setStyle(this.el, this.styleOpen, true)
+    setStyle(this.el, this.styleOpen)
   },
 
   zoomOut() {
     // force layout update
     this.el.offsetWidth
+    const rect = this.instance.placeholder.getBoundingClientRect()
+    const translate = calculateTranslate(rect)
 
-    setStyle(this.el, { transform: 'none' })
+    setStyle(this.el, {
+      transform: `translate(${translate.x}px, ${translate.y}px)`
+    })
   },
 
   grab(x, y, scaleExtra) {
@@ -109,16 +123,9 @@ export default {
 }
 
 function calculateTranslate(rect) {
-  const windowCenter = getWindowCenter()
-  const targetCenter = {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2
-  }
-
-  // The vector to translate image to the window center
   return {
-    x: windowCenter.x - targetCenter.x,
-    y: windowCenter.y - targetCenter.y
+    x: rect.left - (window.innerWidth - rect.width) / 2,
+    y: rect.top - (window.innerHeight - rect.height) / 2
   }
 }
 
